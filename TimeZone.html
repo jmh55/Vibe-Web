@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World Clock</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Rubik', sans-serif;
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    header {
+      padding: 2rem;
+      text-align: center;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 2.5rem;
+    }
+    #clock-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      width: 90%;
+      max-width: 1200px;
+    }
+    .clock-card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      text-align: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      transition: transform 0.2s;
+    }
+    .clock-card:hover {
+      transform: translateY(-5px);
+    }
+    .clock-card h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1.25rem;
+    }
+    .time {
+      font-size: 2rem;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+    }
+    #add-form {
+      margin: 2rem 0;
+      display: flex;
+      gap: 0.5rem;
+    }
+    #add-form input,
+    #add-form button {
+      padding: 0.75rem 1rem;
+      border: none;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+    }
+    #add-form input {
+      flex: 1;
+    }
+    #add-form button {
+      background: #ff6b6b;
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #add-form button:hover {
+      background: #ff4757;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>World Clock</h1>
+    <p>Current times around the globe</p>
+  </header>
+  <div id="clock-container"></div>
+  <form id="add-form">
+    <input type="text" id="location-name" placeholder="Location name (e.g. Denver)" required>
+    <input type="text" id="location-timezone" placeholder="Timezone (e.g. America/Denver)" required>
+    <button type="submit">Add Location</button>
+  </form>
+  <script>
+    const defaultLocations = [
+      { name: 'New York, USA', timezone: 'America/New_York' },
+      { name: 'Los Angeles, USA', timezone: 'America/Los_Angeles' },
+      { name: 'Hawaii, USA', timezone: 'Pacific/Honolulu' },
+      { name: 'Tokyo, Japan', timezone: 'Asia/Tokyo' },
+      { name: 'London, UK', timezone: 'Europe/London' },
+      { name: 'Berlin, Germany', timezone: 'Europe/Berlin' },
+      { name: 'Sydney, Australia', timezone: 'Australia/Sydney' }
+    ];
+
+    let locations = JSON.parse(localStorage.getItem('worldClockLocations')) || defaultLocations;
+
+    const container = document.getElementById('clock-container');
+
+    function updateClocks() {
+      container.innerHTML = '';
+      locations.forEach(loc => {
+        const card = document.createElement('div');
+        card.className = 'clock-card';
+        const title = document.createElement('h2');
+        title.textContent = loc.name;
+        const timeEl = document.createElement('div');
+        timeEl.className = 'time';
+        const now = new Date();
+        const options = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: loc.timezone };
+        timeEl.textContent = new Intl.DateTimeFormat([], options).format(now);
+        card.appendChild(title);
+        card.appendChild(timeEl);
+        container.appendChild(card);
+      });
+    }
+
+    document.getElementById('add-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const name = document.getElementById('location-name').value.trim();
+      const timezone = document.getElementById('location-timezone').value.trim();
+      if(name && timezone) {
+        locations.push({ name, timezone });
+        localStorage.setItem('worldClockLocations', JSON.stringify(locations));
+        updateClocks();
+        e.target.reset();
+      }
+    });
+
+    updateClocks();
+    setInterval(updateClocks, 1000);
+  </script>
+</body>
+</html>
