@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CSV → ICS (All-Day Events)</title>
+<style>
+  :root { --bg:#0f172a; --panel:#111827; --text:#e5e7eb; --muted:#9ca3af; --accent:#38bdf8; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background: radial-gradient(1200px 800px at 20% 0%, #0b1226 0%, var(--bg) 40%, #0b0f1c 100%); color: var(--text); }
+  header { padding: 24px; text-align: center; border-bottom: 1px solid #1f2937; }
+  header h1 { margin: 0; font-size: 1.6rem; letter-spacing: .2px; }
+  header p { margin: 6px 0 0; color: var(--muted); }
+  main { max-width: 1100px; margin: 24px auto; padding: 0 20px 40px; display: grid; gap: 20px; grid-template-columns: 1fr; }
+  .card { background: linear-gradient(180deg, #0b1220, var(--panel)); border: 1px solid #1f2937; border-radius: 14px; padding: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+  .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  label { font-size: .92rem; color: var(--muted); }
+  select, input[type="text"], input[type="file"] { background: #0b1220; color: var(--text); border:1px solid #243142; border-radius: 10px; padding: 10px 12px; font-size: .95rem; }
+  input[type="checkbox"] { transform: translateY(1px); }
+  button { background: linear-gradient(180deg, #1e293b, #0f172a); border: 1px solid #243142; color: var(--text); padding: 10px 14px; border-radius: 10px; font-weight: 600; cursor: pointer; }
+  button.primary { border-color: #0ea5e9; color:#e6f6ff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .dropzone { border: 2px dashed #334155; border-radius: 12px; padding: 18px; text-align: center; color: var(--muted); transition: border-color .15s, background .15s; }
+  .dropzone.drag { border-color: var(--accent); background: rgba(56,189,248,.05); color: #c8f0ff; }
+  .small { font-size: .88rem; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; border: 1px solid #1f2937; border-radius: 10px; overflow: hidden; }
+  thead th { background:#0b1220; color:#cbd5e1; font-weight:600; text-align:left; padding: 10px; border-bottom:1px solid #1f2937; }
+  tbody td { padding: 8px 10px; border-bottom:1px solid #142031; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:.8rem; border:1px solid #203049; color:#cfe7ff; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 880px) { .grid-2 { grid-template-columns: 1fr; } }
+  .footer { text-align:center; color:var(--muted); font-size:.85rem; }
+  .mutedbox { background:#0b1220; border:1px dashed #2a3c52; border-radius:12px; padding:12px; color:#b7c6d9; }
+  .hint { color:#b7c6d9; }
+  .status-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; }
+  .dot-ok { background: var(--ok); } .dot-bad { background: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>CSV → ICS Generator (All-Day Events)</h1>
+  <p>CSV columns: <b>date</b> (mm/dd/yyyy) and <b>subject</b> (or description). Everything runs locally in your browser.</p>
+</header>
+
+<main>
+  <section class="card">
+    <div class="row" style="justify-content: space-between; gap: 20px;">
+      <div class="row" style="gap:16px;">
+        <div>
+          <label for="tz">Calendar Time Zone</label><br>
+          <select id="tz">
+            <option value="America/Los_Angeles" selected>PST/PDT (America/Los_Angeles)</option>
+            <option value="America/Denver">MST/MDT (America/Denver)</option>
+            <option value="America/Chicago">CST/CDT (America/Chicago)</option>
+            <option value="America/New_York">EST/EDT (America/New_York)</option>
+          </select>
+        </div>
+        <div>
+          <label for="rem">Default Reminder</label><br>
+          <span class="row" style="gap:8px;">
+            <input id="rem" type="checkbox" checked />
+            <span class="small">Add 1 day prior reminder (VALARM)</span>
+          </span>
+        </div>
+        <div>
+          <label for="hasHeader">CSV format</label><br>
+          <span class="row" style="gap:8px;">
+            <input id="hasHeader" type="checkbox" checked />
+            <span class="small">Has header row (date, subject/description)</span>
+          </span>
+        </div>
+        <div>
+          <label for="csvfile">Choose CSV</label><br>
+          <input id="csvfile" type="file" accept=".csv,text/csv" />
+        </div>
+      </div>
+      <div class="row" style="gap:10px;">
+        <button id="btnSample">Download Sample CSV</button>
+        <button id="btnPreview">Preview CSV</button>
+        <button id="btnGenerate" class="primary" disabled>Generate .ics</button>
+      </div>
+    </div>
+    <div id="dz" class="dropzone" style="margin-top:14px;">
+      Drag & drop your CSV here — or click “Choose CSV” above.
+      <div class="small" style="margin-top:6px;">Headers optional. If present, expected names (case-insensitive): <code>date</code>, <code>subject</code> or <code>description</code>. Date must be <b>mm/dd/yyyy</b>.</div>
+    </div>
+  </section>
+
+  <section class="card grid-2">
+    <div>
+      <h3 style="margin:0 0 8px 0;">Summary <span id="stats" class="pill">No file</span></h3>
+      <div id="summary" class="mutedbox small">Load a CSV and click <b>Preview CSV</b> to see row-by-row validation.</div>
+    </div>
+    <div>
+      <h3 style="margin:0 0 8px 0;">Validation Report</h3>
+      <div id="report" class="mutedbox small">No issues yet.</div>
+      <div class="row" style="margin-top:10px;">
+        <button id="btnRejects" disabled>Download rejects.csv</button>
+      </div>
+      <p class="small hint" style="margin-top:8px;">
+        Rules: Dates must be <code>mm/dd/yyyy</code> — e.g., <code>02/29/2024</code> is valid (leap year), <code>02/29/2025</code> is not. Empty subjects are rejected.
+      </p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3 style="margin:0 0 8px 0;">CSV Preview (validated)</h3>
+    <div id="preview" class="mutedbox small">No preview yet. Click <b>Preview CSV</b>.</div>
+  </section>
+
+  <section class="footer">Tip: Outlook/Google import the generated <code>.ics</code> as <b>all-day events</b>. The selected time zone is added as a calendar hint.</section>
+</main>
+
+<script>
+/* ---------- Helpers ---------- */
+const byId = (id) => document.getElementById(id);
+const escapeHTML = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ICS escaping & folding */
+function escapeICS(text) {
+  if (text == null) return '';
+  return String(text).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n");
+}
+function foldLine(line) {
+  const enc = new TextEncoder(), dec = new TextDecoder();
+  const bytes = enc.encode(line);
+  if (bytes.length <= 75) return line;
+  let out = "", i = 0;
+  while (i < bytes.length) {
+    const chunk = bytes.slice(i, Math.min(i + 75, bytes.length));
+    out += dec.decode(chunk);
+    i += 75;
+    if (i < bytes.length) out += "\r\n ";
+  }
+  return out;
+}
+
+/* Date validation mm/dd/yyyy */
+function formatDateYYYYMMDD(mmddyyyy) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((mmddyyyy||'').trim());
+  if (!m) return null;
+  let mm = +m[1], dd = +m[2], yyyy = +m[3];
+  if (mm < 1 || mm > 12) return null;
+  const daysInMonth = new Date(yyyy, mm, 0).getDate();
+  if (dd < 1 || dd > daysInMonth) return null;
+  return `${yyyy}${String(mm).padStart(2,'0')}${String(dd).padStart(2,'0')}`;
+}
+function nextDayYYYYMMDD(yyyymmdd) {
+  const y = +yyyymmdd.slice(0,4), m = +yyyymmdd.slice(4,6)-1, d = +yyyymmdd.slice(6,8);
+  const dt = new Date(Date.UTC(y,m,d)); dt.setUTCDate(dt.getUTCDate()+1);
+  return `${dt.getUTCFullYear()}${String(dt.getUTCMonth()+1).padStart(2,'0')}${String(dt.getUTCDate()).padStart(2,'0')}`;
+}
+function nowUTCStamp() {
+  const dt = new Date();
+  return `${dt.getUTCFullYear()}${String(dt.getUTCMonth()+1).padStart(2,'0')}${String(dt.getUTCDate()).padStart(2,'0')}T${String(dt.getUTCHours()).padStart(2,'0')}${String(dt.getUTCMinutes()).padStart(2,'0')}${String(dt.getUTCSeconds()).padStart(2,'0')}Z`;
+}
+function uuidLike() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = crypto.getRandomValues(new Uint8Array(1))[0] & 15;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+/* CSV parsing (quote-safe) */
+function parseCSV(text) {
+  const rows = [], lines = [];
+  let cur = '', inQ = false;
+  text = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  for (const ch of text) {
+    if (ch === '"') { inQ = !inQ; cur += ch; }
+    else if (ch === '\n' && !inQ) { lines.push(cur); cur=''; }
+    else { cur += ch; }
+  }
+  if (cur) lines.push(cur);
+
+  const splitRow = (row) => {
+    const out = []; let field = '', q = false;
+    for (let j=0;j<row.length;j++) {
+      const c = row[j];
+      if (c === '"') {
+        if (q && row[j+1] === '"') { field += '"'; j++; }
+        else { q = !q; }
+      } else if (c === ',' && !q) { out.push(field); field = ''; }
+      else { field += c; }
+    }
+    out.push(field); return out;
+  };
+
+  if (!lines.length) return { headers: [], rows: [] };
+
+  const headers = splitRow(lines[0]).map(h => h.trim());
+  for (let k=1;k<lines.length;k++) {
+    if (!lines[k].trim()) continue;
+    const cols = splitRow(lines[k]);
+    const obj = {};
+    headers.forEach((h, idx) => obj[h] = (cols[idx] ?? '').trim());
+    rows.push(obj);
+  }
+  return { headers, rows, rawLines: lines };
+}
+
+/* ---------- State ---------- */
+let loadedFileText = '';
+let parsed = { headers: [], rows: [], rawLines: [] };
+let validRows = [];   // {start,end,summary,description,sourceRow,rowIndex}
+let rejects = [];     // {rowIndex, reason, rowObj}
+
+/* ---------- Core validation ---------- */
+function normalizeHeaders(headers) { return headers.map(h => h.toLowerCase().trim()); }
+
+function looksLikeHeaderRow(rowObj) {
+  // Detect if an actual data row contains "date"/"subject" literal strings
+  const keys = Object.keys(rowObj);
+  const vals = keys.map(k => (rowObj[k]||'').toLowerCase());
+  return vals.includes('date') && (vals.includes('subject') || vals.includes('description'));
+}
+
+function reparseRespectingHeaderSetting(text, hasHeader) {
+  // If no header row: synthesize headers "date,subject" and parse all lines as data.
+  if (hasHeader) {
+    return parseCSV(text);
+  } else {
+    const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l=>l.trim().length>0);
+    if (!lines.length) return { headers:[], rows:[], rawLines:[] };
+    const headers = ['date','subject'];
+    const rows = [];
+    const splitRow = (row) => {
+      const out = []; let field = '', q = false;
+      for (let j=0;j<row.length;j++) {
+        const c = row[j];
+        if (c === '"') { if (q && row[j+1]==='"'){field+='"'; j++;} else { q=!q; } }
+        else if (c === ',' && !q) { out.push(field); field=''; }
+        else { field += c; }
+      }
+      out.push(field); return out;
+    };
+    for (const line of lines) {
+      const cols = splitRow(line).map(s=>s.trim());
+      const obj = { date: cols[0] ?? '', subject: cols[1] ?? '' };
+      rows.push(obj);
+    }
+    return { headers, rows, rawLines: lines };
+  }
+}
+
+function extractAndValidateRows(parsedObj, hasHeader) {
+  validRows = []; rejects = [];
+
+  // If user says it has header, but first data row ALSO looks like header (duplicate),
+  // skip that first data row.
+  let rows = [...parsedObj.rows];
+  if (hasHeader && rows.length && looksLikeHeaderRow(rows[0])) {
+    rows = rows.slice(1);
+  }
+
+  const H = normalizeHeaders(parsedObj.headers);
+  let idxDate = H.indexOf('date');
+  let idxSubject = H.indexOf('subject'); 
+  if (idxSubject === -1) idxSubject = H.indexOf('description');
+
+  // When we synthesized headers, these will exist. If missing, we’ll try positional fallback.
+  const fallbackPositional = (idxDate === -1 || idxSubject === -1);
+
+  rows.forEach((r, i) => {
+    const rowIndex = i + 1; // 1-based in data area (post real-header line)
+    let dateRaw, subjRaw;
+
+    if (!fallbackPositional) {
+      dateRaw = r[parsedObj.headers[idxDate]];
+      subjRaw = r[parsedObj.headers[idxSubject]];
+    } else {
+      // Positional fallback (first two columns)
+      const keys = Object.keys(r);
+      dateRaw = r[keys[0]];
+      subjRaw = r[keys[1]];
+    }
+
+    if (looksLikeHeaderRow(r)) {
+      // Skip accidental header-in-data silently
+      return;
+    }
+
+    if (!dateRaw || !subjRaw) {
+      rejects.push({ rowIndex, reason: 'Missing date or subject', rowObj: r });
+      return;
+    }
+
+    const ymd = formatDateYYYYMMDD(dateRaw);
+    if (!ymd) {
+      rejects.push({ rowIndex, reason: `Invalid date (needs mm/dd/yyyy): "${dateRaw}"`, rowObj: r });
+      return;
+    }
+    const next = nextDayYYYYMMDD(ymd);
+
+    validRows.push({
+      start: ymd,
+      end: next,
+      summary: subjRaw,
+      description: subjRaw,
+      sourceRow: r,
+      rowIndex
+    });
+  });
+}
+
+/* ---------- ICS ---------- */
+function rowsToICS(rows, opts) {
+  const { addReminder, tzHint } = opts;
+  const now = nowUTCStamp();
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'PRODID:-//CSV2ICS SPA//EN',
+    'VERSION:2.0',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-TIMEZONE:${tzHint}`
+  ];
+  for (const ev of rows) {
+    const uid = `${uuidLike()}@csv2ics`;
+    const lines = [
+      'BEGIN:VEVENT',
+      `UID:${uid}`,
+      `DTSTAMP:${now}`,
+      `DTSTART;VALUE=DATE:${ev.start}`,
+      `DTEND;VALUE=DATE:${ev.end}`,
+      `SUMMARY:${escapeICS(ev.summary)}`,
+      `DESCRIPTION:${escapeICS(ev.description ?? ev.summary)}`
+    ];
+    if (addReminder) {
+      lines.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Reminder','TRIGGER:-P1D','END:VALARM');
+    }
+    lines.push('END:VEVENT');
+    for (const L of lines) ics.push(foldLine(L));
+  }
+  ics.push('END:VCALENDAR');
+  return ics.join('\r\n') + '\r\n';
+}
+
+/* ---------- Rendering ---------- */
+function renderSummary() {
+  const stats = byId('stats');
+  if (!parsed.rows.length) {
+    stats.textContent = 'No file';
+    byId('summary').innerHTML = 'Load a CSV and click <b>Preview CSV</b> to see row-by-row validation.';
+    return;
+  }
+  const totalDataRows = parsed.rows.length;
+  const good = validRows.length;
+  const bad = rejects.length;
+  stats.innerHTML = `Total rows: ${totalDataRows} • <span class="ok">Valid: ${good}</span> • <span class="bad">Invalid: ${bad}</span>`;
+  byId('summary').innerHTML = good
+    ? `<span class="ok">Ready:</span> ${good} event(s) will be included in the .ics`
+    : `<span class="warn">No valid rows detected yet.</span> You can still generate an .ics (it may be empty).`;
+}
+
+function renderReport() {
+  const report = byId('report');
+  if (!parsed.rows.length) { report.innerHTML = 'No issues yet.'; byId('btnRejects').disabled = true; return; }
+  if (rejects.length === 0) {
+    report.innerHTML = `<span class="ok">All rows valid.</span>`;
+    byId('btnRejects').disabled = true;
+    return;
+  }
+  const items = rejects.slice(0, 300).map(r => {
+    const dateVal = r.rowObj?.date ?? r.rowObj?.Date ?? '';
+    const subjVal = r.rowObj?.subject ?? r.rowObj?.Subject ?? r.rowObj?.description ?? r.rowObj?.Description ?? '';
+    return `<li><code>Row ${r.rowIndex}</code> — <span class="bad">${escapeHTML(r.reason)}</span> ${dateVal || subjVal ? `— <span class="small">(${escapeHTML(dateVal)} | ${escapeHTML(subjVal)})</span>` : ''}</li>`;
+  }).join('');
+  const more = rejects.length > 300 ? `<li>…and ${rejects.length-300} more</li>` : '';
+  report.innerHTML = `<div class="bad" style="margin-bottom:6px;">${rejects.length} invalid row(s) will be excluded.</div><ul>${items}${more}</ul>`;
+  byId('btnRejects').disabled = false;
+}
+
+function renderPreviewTable() {
+  const container = byId('preview');
+  if (!parsed.rows.length) { container.innerHTML = 'No preview yet. Load a CSV and click <b>Preview CSV</b>.'; return; }
+
+  // Build a combined view (valid + invalid), in original order, with status
+  const rowMap = new Map(); // rowIndex -> {status, reason?, date, subject}
+  validRows.forEach(v => rowMap.set(v.rowIndex, { status: 'valid', date: getRowDate(v.sourceRow), subject: getRowSubject(v.sourceRow) }));
+  rejects.forEach(r => rowMap.set(r.rowIndex, { status: 'invalid', reason: r.reason, date: r.rowObj?.date ?? r.rowObj?.Date ?? '', subject: r.rowObj?.subject ?? r.rowObj?.Subject ?? r.rowObj?.description ?? r.rowObj?.Description ?? '' }));
+
+  // Note: parsed.rows are data rows after header; indexes align with rowIndex = i+1
+  let html = '<div style="max-height:400px; overflow:auto; border:1px solid #1f2937; border-radius:10px;">';
+  html += '<table><thead><tr><th>#</th><th>Status</th><th>Date</th><th>Subject</th><th>Reason (if invalid)</th></tr></thead><tbody>';
+  for (let i=1; i<=parsed.rows.length; i++) {
+    const info = rowMap.get(i);
+    const date = info?.date ?? getRowDate(parsed.rows[i-1]);
+    const subj = info?.subject ?? getRowSubject(parsed.rows[i-1]);
+    const isValid = info?.status === 'valid';
+    html += `<tr>
+      <td>${i}</td>
+      <td>${isValid ? '<span class="status-dot dot-ok"></span><span class="ok">Valid</span>' : '<span class="status-dot dot-bad"></span><span class="bad">Invalid</span>'}</td>
+      <td>${escapeHTML(date ?? '')}</td>
+      <td>${escapeHTML(subj ?? '')}</td>
+      <td>${!isValid ? escapeHTML(info?.reason ?? '—') : '—'}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
+function getRowDate(rowObj) {
+  // Try common casings/aliases
+  return rowObj?.date ?? rowObj?.Date ?? rowObj?.DATE ?? rowObj?.Date_ ?? rowObj?.['date '] ?? '';
+}
+function getRowSubject(rowObj) {
+  return rowObj?.subject ?? rowObj?.Subject ?? rowObj?.description ?? rowObj?.Description ?? rowObj?.SUBJECT ?? '';
+}
+
+/* ---------- Downloads ---------- */
+function download(filename, content, mime = 'text/plain') {
+  const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 2500);
+}
+function buildRejectsCSV() {
+  if (rejects.length === 0) return '';
+  const headers = ['row', 'reason', ...parsed.headers];
+  const esc = (s) => {
+    const t = (s == null ? '' : String(s));
+    return /[",\n]/.test(t) ? `"${t.replace(/"/g,'""')}"` : t;
+  };
+  const lines = [headers.join(',')];
+  rejects.forEach(r => {
+    const cols = parsed.headers.map(h => r.rowObj[h] ?? '');
+    lines.push([r.rowIndex, esc(r.reason), ...cols.map(esc)].join(','));
+  });
+  return lines.join('\r\n') + '\r\n';
+}
+
+/* ---------- Orchestration ---------- */
+function refreshValidationAndUI() {
+  const hasHeader = byId('hasHeader').checked;
+  parsed = reparseRespectingHeaderSetting(loadedFileText, hasHeader);
+  extractAndValidateRows(parsed, hasHeader);
+  renderSummary();
+  renderReport();
+  // Allow generating even if there are invalid rows or even zero valid (will create empty VCALENDAR)
+  byId('btnGenerate').disabled = (parsed.rows.length === 0);
+}
+
+function handleCSVText(text) {
+  loadedFileText = text || '';
+  refreshValidationAndUI();
+}
+
+function handleFiles(files) {
+  if (!files || !files.length) return;
+  const f = files[0];
+  const reader = new FileReader();
+  reader.onload = e => handleCSVText(e.target.result);
+  reader.readAsText(f, 'utf-8');
+}
+
+function bindDragDrop(dz) {
+  ['dragenter','dragover'].forEach(evt => dz.addEventListener(evt, e => {
+    e.preventDefault(); e.stopPropagation(); dz.classList.add('drag');
+  }));
+  ['dragleave','drop'].forEach(evt => dz.addEventListener(evt, e => {
+    e.preventDefault(); e.stopPropagation(); dz.classList.remove('drag');
+  }));
+  dz.addEventListener('drop', e => {
+    const dt = e.dataTransfer;
+    if (dt && dt.files && dt.files.length) handleFiles(dt.files);
+  });
+}
+
+/* ---------- Wire up ---------- */
+bindDragDrop(byId('dz'));
+byId('csvfile').addEventListener('change', e => handleFiles(e.target.files));
+byId('hasHeader').addEventListener('change', () => refreshValidationAndUI());
+
+byId('btnSample').addEventListener('click', () => {
+  const sample =
+`date,subject
+01/15/2026,Quarterly Planning Offsite
+02/29/2028,Leap Day Party
+11/28/2025,Black Friday Launch
+02/29/2025,INVALID (2025 is not a leap year)
+13/01/2026,INVALID (bad month)
+`;
+  download('sample.csv', sample, 'text/csv');
+});
+
+byId('btnPreview').addEventListener('click', () => {
+  if (!loadedFileText) { byId('preview').innerHTML = 'No file loaded yet.'; return; }
+  renderPreviewTable();
+});
+
+byId('btnRejects').addEventListener('click', () => {
+  const csv = buildRejectsCSV();
+  if (!csv) return;
+  download('rejects.csv', csv, 'text/csv');
+});
+
+byId('btnGenerate').addEventListener('click', () => {
+  const addReminder = byId('rem').checked;
+  const tzHint = byId('tz').value;
+  // validRows may be 0; we still produce a minimal VCALENDAR (imports cleanly, just with no events)
+  const ics = rowsToICS(validRows, { addReminder, tzHint });
+  download('events.ics', ics, 'text/calendar');
+});
+</script>
+</body>
+</html>
